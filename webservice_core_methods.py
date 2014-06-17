@@ -1,0 +1,600 @@
+"""
+Module for webservice core methods
+written by NFBB
+"""
+from openerp.osv import osv
+from copy import deepcopy
+from datetime import datetime
+from openerp.tools.translate import _
+
+class webservice_core_methods(osv.osv):
+
+    #_name field for osv class
+    _name = "webservice.core.methods"
+
+
+
+    """
+    get id by field name if there is
+    """
+    def get_id_by_field_name(self, cr, uid, table_name, search_criterea, error_message, context=None):
+        # to get table info
+        table_obj = self.pool.get(table_name)
+        # to get search ids
+        table_search_obj_ids = table_obj.search(cr, uid, search_criterea, context=context)
+        # to get data on search ids
+        table_search_result = table_obj.browse(cr, uid, table_search_obj_ids, context=context)
+        if len(table_search_result) > 0:
+            if isinstance(table_search_result, list):
+                table_search_result = table_search_result[0]
+                return table_search_result.id
+            return table_search_result.id
+        self.error_exception(error_message)
+
+    """
+    to call exception
+    """
+    def error_exception(self, error_message):
+        raise osv.except_osv(_('Error!'), _(error_message))
+
+    """
+    to query data on search criteria
+    """
+    def query_data(self, cr, uid, table_name, search_criterea, context=None):
+        # to get table info
+        table_obj = self.pool.get(table_name)
+        # to get search ids
+        table_search_obj_ids = table_obj.search(cr, uid, search_criterea, context=context)
+        if len(table_search_obj_ids):
+            return table_search_obj_ids
+        return 0
+
+    """
+    to query on bank name
+    """
+    def query_bank(self, cr, uid, name, context=None):
+        return self.query_data(cr, uid, 'res.bank', [('name', '=', name)], context)
+
+    """
+    to query on state
+    """
+    def query_state(self, cr, uid, name, context=None):
+        return self.query_data(cr, uid, 'res.country.state', [('name', '=', name)], context)
+
+    """
+    to query on country name
+    """
+    def query_country(self, cr, uid, name, context=None):
+        return self.query_data(cr, uid, 'res.country', [('name', '=', name)], context)
+
+    """
+    to query on country name
+    """
+    def query_company(self, cr, uid, name, context=None):
+        return self.query_data(cr, uid, 'res.company', [('name', '=', name)], context)
+
+    """
+    to query on title
+    """
+    def query_title(self, cr, uid, name, context=None):
+        return self.query_data(cr, uid, 'res.partner.title', [('name', '=', name)], context)
+
+    """
+    to query on customer by name
+    """
+    def query_partner_by_name(self, cr, uid, name, context=None):
+        return self.query_data(cr, uid, 'res.partner', [('name', '=', name)], context)
+
+    """
+    to query on customer by phone
+    """
+    def query_partner_by_phone(self, cr, uid, phone, context=None):
+        return self.query_data(cr, uid, 'res.partner', [('phone', '=', phone)], context)
+
+    """
+    to query on customer by email
+    """
+    def query_partner_by_email(self, cr, uid, email, context=None):
+        return self.query_data(cr, uid, 'res.partner', [('email', '=', email)], context)
+
+    """
+    to query for invoice by invoice_no
+    """
+    def query_invoice_by_reference_no(self, cr, uid, reference_no, context=None):
+        return self.query_data(cr, uid, 'account.invoice', [('reference', '=', reference_no)], context)
+
+    """
+    to query for Journal Name
+    """
+    def query_invoice_by_name(self, cr, uid, name, context=None):
+        return self.query_data(cr, uid, 'account.journal', [('name', '=', name)], context)
+
+    """
+    to query for partner address
+    """
+    def get_partner_data(self, cr, uid, ids, context=None):
+        fields = ['street', 'street2', 'zip', 'city', 'state_id', 'country_id', 'email', 'phone', 'fax', 'mobile']
+        res_partner_obj = self.pool.get('res.partner')
+        return res_partner_obj.read(cr, uid, ids, fields, context=context)
+
+    """
+    to create invoice
+    """
+    def create_invoice(self, cr, uid, vals, context=None):
+        integer_list = ['product_id', 'account_id', 'account_analytic_id', 'uos_id', 'fiscal_position']
+        date_list = ['date_due', 'date_invoice']
+        ignore_list = ['invoice_line_data']
+        float_list = ['discount', 'price_unit', 'quantity']
+        # creating list
+        invoice_line = []
+        invoice_tax_line = []
+        invoice_internal_tax_line = []
+        invoice_line_dict = dict()
+        main_dict = dict()
+        main_dict['user_id'] = uid
+        main_dict['invoice_line'] = []
+        invoice_lines_in_csv = vals['invoice_line_data']
+        for invoice_line_rec in invoice_lines_in_csv.split('~'):
+            for fields in invoice_line_rec.split('?'):
+                field_key, field_value = fields.split(':')
+                field_key = field_key.strip()
+                field_value = field_value.strip()
+                # setting tax line
+                # I have written some code here , as there is some error into adding tax into invoice_line
+                  # setting tax line
+                if field_key == 'invoice_tax_id':
+                    if field_value.find('+') != -1:
+                        invoice_tax_line_ids = field_value.split("+")
+                        for item in invoice_tax_line_ids:
+                            invoice_tax_line.append(int(item))
+                    else:
+                        invoice_tax_line.append(int(field_value))
+                        invoice_line_dict['invoice_line_tax_id'] = [(6, 0, deepcopy(invoice_tax_line))]
+                    continue
+                if field_key == 'invoice_tax_internal_id':
+                    invoice_internal_tax_line.append(int(field_value))
+                    invoice_tax_line.append(invoice_internal_tax_line)
+                    continue
+                if field_key in integer_list:
+                    if field_value != 'False':
+                        invoice_line_dict[field_key] = int(field_value)
+                    else:
+                        invoice_line_dict[field_key] = False
+                elif field_key in date_list:
+                    if field_value != 'False':
+                        invoice_line_dict[field_key] = datetime.strptime(field_value, '%d-%m-%y')
+                    else:
+                        invoice_line_dict[field_key] = False
+                elif field_key in float_list:
+                    if field_value != 'False' and field_value:
+                        invoice_line_dict[field_key] = float(field_value)
+                else:
+                    if field_value != 'False':
+                        invoice_line_dict[field_key] = field_value
+                    else:
+                        invoice_line_dict[field_key] = False
+            invoice_line.append(0)
+            invoice_line.append(False)
+            invoice_line.append(deepcopy(invoice_line_dict))
+            main_dict['invoice_line'].append(deepcopy(invoice_line))
+            if invoice_line:
+                del invoice_line[:]
+            if invoice_tax_line:
+                del invoice_tax_line[:]
+            if invoice_internal_tax_line:
+                del invoice_internal_tax_line[:]
+            invoice_line_dict.clear()
+        for k, v in vals.items():
+            if k in ignore_list:
+                pass
+            else:
+                main_dict[k] = v
+        account_invoice_obj = self.pool.get('account.invoice')
+        account_invoice_id = account_invoice_obj.create(cr, uid, main_dict, context)
+        account_invoice_obj.button_compute(cr, uid, [account_invoice_id], context=context, set_total=True)
+        return account_invoice_id
+
+
+    """
+    to create sale order
+    """
+    def create_quote(self, cr, uid, vals, context=None):
+        integer_list = ['product_id','payment_term','fiscal_position','partner_id', 'shop_id', 'account_id']
+        m2m_list = ['tax_id']
+        date_list = ['date_order']
+        ignore_list = ['sale_order_line_data']
+        float_list = ['price_unit', 'product_uom_qty','discount']
+        # creating list
+        sale_order_line = []
+        sale_order_line_dict = dict()
+        main_dict = dict()
+        main_dict['user_id'] = uid
+        main_dict['order_line'] = []
+        sale_order_lines_in_csv = vals['sale_order_line_data']
+
+        for k, v in vals.items():
+            if k in ignore_list:
+                pass
+            else:
+                main_dict[k] = v
+        partner_browse_obj = self.pool.get('res.partner').browse(cr, uid, vals.get('partner_id'))
+        shop_browse_obj = self.pool.get('sale.shop').browse(cr, uid, vals.get('shop_id'))
+        main_dict['pricelist_id'] = shop_browse_obj.pricelist_id.id
+        main_dict['partner_invoice_id'] = vals.get('partner_id')
+        main_dict['partner_shipping_id'] = vals.get('partner_id')
+        main_dict['fiscal_position'] = partner_browse_obj.property_account_position.id
+        fiscal_position = partner_browse_obj.property_account_position.id
+
+        for sale_line_rec in sale_order_lines_in_csv.split('~'):
+            for fields in sale_line_rec.split('?'):
+                field_key, field_value = fields.split(':')
+                field_key = field_key.strip()
+                field_value = field_value.strip()
+                if field_key in integer_list:
+                    if field_value != 'False':
+                        sale_order_line_dict[field_key] = int(field_value)
+                        if field_key == 'product_id':
+                        	product = int(field_value)
+                    else:
+                        sale_order_line_dict[field_key] = False
+                elif field_key in date_list:
+                    if field_value != 'False':
+                        sale_order_line_dict[field_key] = datetime.strptime(field_value, '%d-%m-%y')
+                    else:
+                        sale_order_line_dict[field_key] = False
+                elif field_key in float_list:
+                    if field_value != 'False':
+                        sale_order_line_dict[field_key] = float(field_value)
+                elif field_key in m2m_list:
+                    if field_value != 'False':
+		        if product and fiscal_position:
+		            product_tax_id = int(field_value)
+		            tax_obj = self.pool.get('account.tax').browse(cr, uid, product_tax_id)
+		            fpos = fiscal_position and self.pool.get('account.fiscal.position').browse(cr, uid, fiscal_position) or False
+		            tax_id = self.pool.get('account.fiscal.position').map_tax(cr, uid, fpos, [tax_obj])
+		            sale_order_line_dict['tax_id'] = [(6, 0, tax_id)]
+                	else:
+                	    sale_order_line_dict[field_key] = [(6, 0, [field_value])]
+                else:
+                    if field_value != 'False':
+                        sale_order_line_dict[field_key] = field_value
+                    else:
+                        sale_order_line_dict[field_key] = False
+            sale_order_line.append(0)
+            sale_order_line.append(False)
+            sale_order_line.append(deepcopy(sale_order_line_dict))
+            main_dict['order_line'].append(deepcopy(sale_order_line))
+            if sale_order_line:
+                del sale_order_line[:]
+            sale_order_line_dict.clear()
+
+        sale_order_obj = self.pool.get('sale.order')
+        sale_order_id = sale_order_obj.create(cr, uid, main_dict, context)
+        return sale_order_id
+
+    """
+    to create product
+    """
+    def create_product(self, cr, uid, vals, context=None):
+        vals['user_id'] = uid
+        res_partner_obj = self.pool.get('product.product')
+        product_id = res_partner_obj.create(cr, uid, vals, context)
+        if vals.get('supplier_id'):
+        	supplier_info_vals = {'product_id' : product_id, 'name' : vals.get('supplier_id'), 'min_qty': 0.0, 'delay': 1}
+        	self.pool.get('product.supplierinfo').create(cr, uid, supplier_info_vals, context)
+        return product_id
+
+    ########
+    # this is to create customer or supplier method
+    ########
+    def create_customer_or_supplier(self, cr, uid, vals, context=None):
+        company_id = self.pool.get('res.users').browse(cr, uid, [uid], context=context)[0].company_id.id
+        vals['user_id'] = uid
+        res_partner_obj = self.pool.get('res.partner')
+        res_country_obj = self.pool.get('res.country')
+        res_state_obj = self.pool.get('res.county.state')
+        location_obj = self.pool.get('stock.location')
+        usage = 'customer'
+        if vals.get('country_id'):
+            country_id = vals.get('country_id')
+            parent_location_name = res_country_obj.browse(cr, uid, country_id, context).name
+            parent_location_ids = location_obj.search(cr, uid, [('name', '=', parent_location_name),('company_id','=',company_id)], context=context)
+            if parent_location_ids:
+                parent_location_id= parent_location_ids[0]
+            else:
+                parent_location_vals={'name': parent_location_name, 'usage' : 'view','company_id':company_id}
+                parent_location_id = location_obj.create(cr, uid, parent_location_vals, context=context)
+        if vals.get('city') and vals.get('country_id'):
+            if vals.get('supplier') == 'true':
+                usage= 'supplier'
+            location_name =vals.get('name')+'+'+vals.get('city')
+            location_ids = self.pool.get('stock.location').search(cr, uid, [('name', '=', location_name), ('usage', '=', usage),('company_id','=',company_id)], context=context)
+            if location_ids:
+                if vals.get('customer') == 'true':
+                    vals.update({'property_stock_customer' : location_ids[0]})
+                else:
+                    vals.update({'property_stock_supplier' : location_ids[0]})
+            else:
+                location_vals = {'name': location_name, 'location_id': parent_location_id, 'usage': usage,'company_id':company_id}
+                location_id = location_obj.create(cr, uid, location_vals, context=context)
+                if vals.get('customer') == 'true':
+                    vals.update({'property_stock_customer' : location_id})
+                else:
+                    vals.update({'property_stock_supplier' : location_id})
+        partner_id = res_partner_obj.create(cr, uid, vals, context)
+        return partner_id
+
+    """
+    to create country
+    """
+    def create_country(self, cr, uid, vals, context=None):
+        vals['user_id'] = uid
+        res_country_obj = self.pool.get('res.country')
+        country_id = res_country_obj.create(cr, uid, vals, context)
+        return country_id
+
+    """
+    to create state
+    """
+    def create_state(self, cr, uid, vals, context=None):
+        vals['user_id'] = uid
+        res_country_state_obj = self.pool.get('res.country.state')
+        state_id = res_country_state_obj.create(cr, uid, vals, context)
+        return state_id
+
+
+    """
+    to update product
+    """
+    def update_product(self, cr, uid, vals, context=None):
+    	product_obj = self.pool.get('product.product')
+        product_id = product_obj.search(cr, uid, [('default_code', '=', vals.get('default_code'))], context)
+        if product_id and vals.get('name'):
+        	product_obj.write(cr, uid, product_id, {'name': vals.get('name')})
+        if product_id and vals.get('supplier_id'):
+        	supplier_info_obj = self.pool.get('product.supplierinfo')
+        	supplier_info_ids = supplier_info_obj.search(cr, uid, [('product_id', '=', product_id)], context)
+        	for supplier_info_id in supplier_info_ids:
+        		supplier_info_obj.write(cr, uid, [supplier_info_id], {'name': vals.get('supplier_id')})
+        	if not supplier_info_ids:
+        		supplier_info_vals = {'product_id' : product_id[0], 'name' : vals.get('supplier_id'), 'min_qty': 0.0, 'delay': 1}
+        		supplier_info_obj.create(cr, uid, supplier_info_vals, context)
+        return True
+
+    """
+    to update partner
+    """
+    def update_partner(self, cr, uid, vals, context=None):
+    	partner_obj = self.pool.get('res.partner')
+        partner_id = partner_obj.search(cr, uid, [('id', '=', vals.get('partner_id'))], context)
+        del vals['partner_id']
+        partner_obj.write(cr, uid, partner_id, vals, context)
+        return True
+
+
+
+    """
+    to query product by name
+    """
+    def query_product_by_name(self, cr, uid, name, context=None):
+        return self.query_data(cr, uid, 'product.product', [('name', '=', name)], context)
+
+    """
+    to query shop and payement term by name
+    """
+    def query_shop_company_wise(self,cr, uid, data, context=None):
+    	shop_data = {}
+        if not isinstance (data, dict):
+            self.error_exception('only dictionary is allowed')
+	shop_id = self.query_data(cr, uid, 'sale.shop', [('company_id', '=', data['company_id']), (data['field_name'], '=', data['field_value'])], context)
+	if shop_id:
+	    shop_data['shop_id'] = shop_id[0]
+	    payment_term_id = self.pool.get('sale.shop').browse(cr, uid, shop_id, context=context)[0].payment_default_id.id
+	    shop_data['payment_term_id'] = payment_term_id
+        return shop_data
+
+
+    """
+    to query county by name
+    """
+    def query_county_by_name(self,cr, uid, data, context=None):
+        if not isinstance (data, dict):
+            self.error_exception('only dictionary is allowed')
+        return self.query_data(cr, uid, 'res.country', [(data['field_name'], '=', data['field_value'])], context)
+
+    """
+    to query state by name
+    """
+    def query_state_by_name(self,cr, uid, data, context=None):
+        if not isinstance (data, dict):
+            self.error_exception('only dictionary is allowed')
+        return self.query_data(cr, uid, 'res.country.state', [(data['field_name'], '=', data['field_value'])], context)
+
+    """
+    to query product by reference code
+    """
+    def query_product_by_code(self, cr, uid, code, context=None):
+        return self.query_data(cr, uid, 'product.product', [('default_code', '=', code)], context)
+
+    """
+    to query for partner address
+    """
+    def get_product_data(self, cr, uid, ids, context=None):
+        fields = ['name', 'active', 'default_code', 'description', 'standard_price', 'warranty']
+        res_partner_obj = self.pool.get('product.product')
+        return res_partner_obj.read(cr, uid, ids, fields, context=context)
+
+    """
+    to query on customer by name
+    """
+    def query_customer_by_name(self, cr, uid, name, context=None):
+        return self.query_data(cr, uid, 'res.partner', [('name', '=', name), ('customer', '=', True)], context)
+
+    """
+    to query on customer by name
+    """
+    def query_customer_by_phone(self, cr, uid, phone, context=None):
+        return self.query_data(cr, uid, 'res.partner', [('phone', '=', phone), ('customer', '=', True)], context)
+
+
+    """
+    to query on customer by name
+    """
+    def query_customer_by_email(self, cr, uid, email, context=None):
+        return self.query_data(cr, uid, 'res.partner', [('email', '=', email), ('customer', '=', True)], context)
+
+    """
+    to query on supplier by name
+    """
+    def query_supplier_by_name(self, cr, uid, name, context=None):
+        return self.query_data(cr, uid, 'res.partner', [('name', '=', name), ('supplier', '=', True)], context)
+
+    """
+    to query on supplier by phone
+    """
+    def query_supplier_by_phone(self, cr, uid, phone, context=None):
+        return self.query_data(cr, uid, 'res.partner', [('phone', '=', phone), ('supplier', '=', True)], context)
+
+    """
+    to query on supplier by email
+    """
+    def query_supplier_by_email(self, cr, uid, email, context=None):
+        return self.query_data(cr, uid, 'res.partner', [('email', '=', email), ('supplier', '=', True)], context)
+
+    """
+    to query on partner company wise and phone, name and email
+    """
+    def query_partner_company_wise(self,cr, uid, data, context=None):
+        if not isinstance (data, dict):
+            self.error_exception('only dictionary is allowed')
+        if data['partner_type'] == 'customer':
+            return self.query_data(cr, uid, 'res.partner', [('company_id', '=', data['company_id']), (data['field_name'], '=', data['field_value']), ('customer', '=', True)], context)
+        elif data['partner_type'] == 'supplier':
+            return self.query_data(cr, uid, 'res.partner', [('company_id', '=', data['company_id']), (data['field_name'], '=', data['field_value']), ('supplier', '=', True)], context)
+
+    """
+    to query journal company wise
+    """
+    def query_journal_company_wise(self, cr, uid, data, context=None):
+        if not isinstance (data, dict):
+            self.error_exception('only dictionary is allowed')
+        if data['company_id'] and data['journal_name']:
+            return self.query_data(cr, uid, 'account.journal', [('company_id', '=', data['company_id']), ('type', '=', data['journal_name'])], context)
+
+    """
+    to query account company wise
+    """
+    def query_account_company_wise(self, cr, uid, data, context=None):
+        if not isinstance (data, list):
+            self.error_exception('only dictionary is allowed')
+        if data['company_id'] and data['account_name']:
+            return self.query_data(cr, uid, 'account.account', [('company_id', '=', data['company_id']), ('name', '=', data['account_name'])], context)
+
+    """
+    to get data
+    """
+    def get_data(self, cr, uid, search_criterea, fields, table_name, context=None):
+        # to get table info1
+        table_obj = self.pool.get(table_name)
+        # to get search ids
+        table_search_obj_ids = table_obj.search(cr, uid, search_criterea, context=context)
+        # get data
+        return table_obj.read(cr, uid, table_search_obj_ids, fields, context=context)
+
+    """
+    to get company data
+    """
+    def get_all_companies(self, cr, uid, data, context=None):
+        return self.get_data(cr, uid, [],['id','name'], 'res.company', context=context)
+
+    """
+    to get journal data
+    """
+    def get_journals_company_wise(self, cr, uid, company_id, context=None):
+        return self.get_data(cr, uid, [('company_id', '=', company_id)],
+                             ['name' ,
+                              'code' ,
+                              'type' ,
+                              'default_credit_account_id' ,
+                              'default_debit_account_id' ,
+                              'currency' ,
+                              'journal_id'
+                              ],
+                             'account.journal', context=context)
+    """
+    to get account data
+    """
+    def get_accounts_company_wise(self, cr, uid, company_id, context=None):
+        return self.get_data(cr, uid, [('company_id', '=', company_id)],
+                             ['name',
+                              'currency_id',
+                              'code',
+                              'type',
+                              'Internal Type',
+                              'user_type',
+                              'balance',
+                              'credit',
+                              'debit',
+                              'tax_ids',
+                              'note',
+                              'company_id',
+                              'active',
+                              ],
+                             'account.account', context=context)
+    """
+    to get currency data
+    """
+    def get_currencies_company_wise(self, cr, uid, company_id, context=None):
+        return self.get_data(cr, uid, [('company_id', '=', company_id)],
+                             ['name',
+                              'symbol',
+                              'rate' ,
+                              'accuracy',
+                              'rounding',
+                              'active',
+                              'company_id',
+                              'date',
+                              'base',
+                              'position'
+                              ],
+                             'res.currency', context=context)
+    """
+    to get tax data
+    """
+    def get_accounts_taxes_company_wise(self, cr, uid, company_id, context=None):
+        return self.get_data(cr, uid, [('company_id', '=', company_id)],
+                             ['name',
+                              'sequence',
+                              'amount',
+                              'active',
+                              'type',
+                              'applicable_type',
+                              'domain',
+                              'tax_code_id',
+                              'description',
+                              ],
+                             'account.tax', context=context)
+
+    """
+    to get payment term data
+    """
+    def get_payment_term(self, cr, uid, active, context=None):
+        return self.get_data(cr, uid, [('active', '=', True)],
+                             ['name',
+                              'active',
+                              'note',
+                              'line_ids',
+                              ],
+                             'account.payment.term', context=context)
+
+
+    """
+    to get fiscal position per company
+    """
+    def get_fiscal_position(self, cr, uid, company_id, context=None):
+        return self.get_data(cr, uid, [('company_id', '=', company_id)],
+                             ['id',
+                              'name'
+                              ],
+                             'account.fiscal.position', context=context)
+
